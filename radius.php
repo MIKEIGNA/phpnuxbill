@@ -303,7 +303,7 @@ try {
             $d->macaddr = _post('macAddr');
             $d->dateAdded = date('Y-m-d H:i:s');
             // pastikan data akunting yang disimpan memang customer aktif phpnuxbill
-            $tur = ORM::for_table('tbl_user_recharges')->whereRaw("BINARY username = '$username' AND `status` = 'on' AND `routers` = 'radius'")->find_one();
+            $tur = ORM::for_table('tbl_user_recharges')->whereRaw("BINARY username = '$username' AND `status` = 'on' AND (`routers` = 'radius' OR `routers` = 'Radius')")->find_one();
             if (!$tur) {
                 // check if pppoe_username
                 $c = ORM::for_table('tbl_customers')->select('username')->whereRaw("BINARY pppoe_username = '$username'")->find_one();
@@ -321,7 +321,7 @@ try {
                         $attrs['reply:Mikrotik-Total-Limit'] = Text::convertDataUnit($plan['data_limit'], $plan['data_unit']) - $totalUsage;
                         if ($attrs['reply:Mikrotik-Total-Limit'] < 0) {
                             $attrs['reply:Mikrotik-Total-Limit'] = 0;
-                            show_radius_result(["control:Auth-Type" => "Accept", 'Reply-Message' => 'You have exceeded your data limit.'], 401);
+                            show_radius_result(["control:Auth-Type" => "Reject", 'Reply-Message' => 'You have exceeded your data limit.'], 401);
                         }
                     }
                 }
@@ -336,14 +336,14 @@ try {
     die();
 } catch (Throwable $e) {
     Message::sendTelegram(
-        "Sistem Error.\n" .
+        "System Error.\n" .
             $e->getMessage() . "\n" .
             $e->getTraceAsString()
     );
     show_radius_result(['Reply-Message' => 'Command Failed : ' . $action], 401);
 } catch (Exception $e) {
     Message::sendTelegram(
-        "Sistem Error.\n" .
+        "System Error.\n" .
             $e->getMessage() . "\n" .
             $e->getTraceAsString()
     );
@@ -362,10 +362,37 @@ function process_radiust_rest($tur, $code)
         ->find_array();
     // get all the IP
     $ips = array_column($USRon, 'framedipaddress');
-    // check if user reach shared_users limit but IP is not in the list active
+    // Check if user reach shared_users limit but IP is not in the list active
     if (count($USRon) >= $plan['shared_users'] && $plan['type'] == 'Hotspot' && !in_array(_post('framedIPAddress'), $ips)) {
-        show_radius_result(["control:Auth-Type" => "Accept", 'Reply-Message' => 'You are already logged in - access denied (' . $USRon . ')'], 401);
+
+        if ($plan['shared_users'] == 1) {
+            // Single shared user: terminate old session, allow new IP
+            $oldSession = reset($USRon);
+            $session = ORM::for_table('rad_acct')
+                ->whereRaw("BINARY username = '" . $tur['username'] . "' AND framedipaddress = '" . $oldSession['framedipaddress'] . "' AND acctstatustype = 'Start'")
+                ->find_one();
+
+            if ($session) {
+                $session->acctstatustype = 'Stop';
+                $session->acctsessiontime = intval(_post('acctSessionTime'));
+                $session->save();
+                _log("Terminated old session for " . $tur['username'] . " from IP " . $oldSession['framedipaddress'], 'RADIUS');
+            }
+        } else {
+            // Multiple shared users: remove oldest session
+            $oldestSession = ORM::for_table('rad_acct')
+                ->whereRaw("BINARY username = '" . $tur['username'] . "' AND acctstatustype = 'Start'")
+                ->order_by_asc('dateAdded')
+                ->find_one();
+
+            if ($oldestSession) {
+                $oldestSession->acctstatustype = 'Stop';
+                $oldestSession->save();
+                _log("Terminated oldest session for " . $tur['username'] . " from IP " . $oldestSession['framedipaddress'], 'RADIUS');
+            }
+        }
     }
+    
     if ($bw['rate_down_unit'] == 'Kbps') {
         $unitdown = 'K';
     } else {
@@ -410,7 +437,7 @@ function process_radiust_rest($tur, $code)
             $attrs['reply:Mikrotik-Total-Limit'] = Text::convertDataUnit($plan['data_limit'], $plan['data_unit']) - $totalUsage;
             if ($attrs['reply:Mikrotik-Total-Limit'] < 0) {
                 $attrs['reply:Mikrotik-Total-Limit'] = 0;
-                show_radius_result(["control:Auth-Type" => "Accept", 'Reply-Message' => 'You have exceeded your data limit.'], 401);
+                show_radius_result(["control:Auth-Type" => "Reject", 'Reply-Message' => 'You have exceeded your data limit.'], 401);
             }
         }
         if ($plan['limit_type'] == "Time_Limit") {
