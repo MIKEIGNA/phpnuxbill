@@ -108,3 +108,77 @@ We appreciate all people who are participating in this project.
 <a href="https://github.com/hotspotbilling/phpnuxbill/graphs/contributors">
   <img src="https://contrib.rocks/image?repo=hotspotbilling/phpnuxbill" />
 </a>
+
+
+Step 1: Install Docker Desktop
+Download Docker Desktop for Windows
+Install it and restart your computer
+Verify installation in PowerShell:
+
+docker --version
+
+Step 2: Configure Docker Compose
+The docker-compose.example.yml is already in your project. You can use it as-is, or create a docker-compose.yml copy for your local setup:
+
+Step 3: Start Docker Containers
+Open PowerShell and navigate to your project:
+
+cd c:\Users\Administrator\Documents\isp_billing\phpnuxbill
+
+Start the containers:
+
+docker-compose up -d
+
+This downloads MySQL 8.0, builds the PHP/Apache image, and starts both services.
+
+Verify containers are running:
+
+docker-compose ps
+
+You should see both nuxbill and mysql containers with status "Up"
+
+Step 4: Access the Installation Wizard
+Open your browser and go to: http://localhost/install/
+
+Follow the installer steps:
+
+Step 1: Accept terms & continue
+Step 2: System requirements check
+Step 3: Database configuration:
+Host: mysql
+User: nuxbill
+Password: 12345678
+Database: nuxbill
+Step 4: Admin account creation
+Step 5: Finish installation
+After installation, access the app at: http://localhost
+
+Step 5: Database Access (Optional)
+If you need to directly access MySQL:
+
+docker exec -it mysql mysql -u nuxbill -p12345678 nuxbill
+
+Or use MySQL Workbench/phpMyAdmin:
+
+Host: localhost
+Port: 3306
+User: nuxbill
+Password: 12345678
+Useful Docker Commands
+
+# View logs
+docker-compose logs -f nuxbill
+
+# Restart container
+docker-compose restart nuxbill
+
+# Stop all containers
+docker-compose down
+
+# Stop and remove volumes (clean reset)
+docker-compose down -v
+
+# Access PHP container shell
+docker exec -it nuxbill bash
+docker --version
+That's it! Your PHPNuxBill application should be running on Windows via Docker. Let me know if you encounter any issues!
